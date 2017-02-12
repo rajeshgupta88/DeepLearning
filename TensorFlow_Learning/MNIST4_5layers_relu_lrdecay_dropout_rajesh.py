@@ -21,6 +21,8 @@ X = tf.placeholder(tf.float32, [None, 28,28,1])
 Y_= tf.placeholder(tf.float32, [None,10])
 #variable learning rate
 lr = tf.placeholder(tf.float32)
+# probability of keeping a node during dropout =1.0 at test time(no dropout) and 0.75 at training time
+pkeep = tf.placeholder(tf.float32)
 
 # five layers and their number of neurons ( last layer has 10 softmax neurons)
 L = 200
@@ -45,10 +47,18 @@ B5= tf.Variable(tf.zeros([10]))
 
 # the model
 Y1= tf.nn.relu(tf.matmul(tf.reshape(X,[-1,784]),W1)+B1)
-Y2= tf.nn.relu(tf.matmul(Y1,W2)+B2)
-Y3= tf.nn.relu(tf.matmul(Y2,W3)+B3)
-Y4= tf.nn.relu(tf.matmul(Y3,W4)+B4)
-Ylogits= tf.matmul(Y4,W5)+B5
+Y1d = tf.nn.dropout(Y1, pkeep)
+
+Y2= tf.nn.relu(tf.matmul(Y1d,W2)+B2)
+Y2d = tf.nn.dropout(Y2, pkeep)
+
+Y3= tf.nn.relu(tf.matmul(Y2d,W3)+B3)
+Y3d = tf.nn.dropout(Y3, pkeep)
+
+Y4= tf.nn.relu(tf.matmul(Y3d,W4)+B4)
+Y4d = tf.nn.dropout(Y4, pkeep)
+
+Ylogits= tf.matmul(Y4d,W5)+B5
 Y= tf.nn.softmax(Ylogits)
 
 # tensorflow provides the softmax_cross_entropy_with_logits function to avoid numerical instability
@@ -94,13 +104,13 @@ def training_step(i, update_test_data, update_train_data):
     learning_rate= min_learning_rate+(max_learning_rate -min_learning_rate)*math.exp(-i/decay_speed)
     
     
-    train_data= {X: batch_X, Y_: batch_Y}
-    test_data= {X: mnist.test.images, Y_:mnist.test.labels}
+    #train_data= {X: batch_X, Y_: batch_Y, lr:learning_rate}
+    #test_data= {X: mnist.test.images, Y_:mnist.test.labels}
 
 
     # success on the train data?
     if update_train_data:
-        a,c,im,w,b = sess.run([accuracy,cross_entropy,I,allweights, allbiases], feed_dict= train_data)
+        a,c,im,w,b = sess.run([accuracy,cross_entropy,I,allweights, allbiases], {X: batch_X, Y_: batch_Y, pkeep:0.75})
         datavis.append_training_curves_data(i,a,c)
         datavis.append_data_histograms(i,w,b)
         datavis.update_image1(im)
@@ -109,7 +119,7 @@ def training_step(i, update_test_data, update_train_data):
     
     # success on the test data?
     if update_test_data:
-        a,c,im = sess.run([accuracy,cross_entropy, It], feed_dict=test_data)
+        a,c,im = sess.run([accuracy,cross_entropy, It], {X: mnist.test.images, Y_:mnist.test.labels, pkeep:1.0})
         datavis.append_test_curves_data(i,a,c)
         datavis.update_image2(im)
         print (str(i)+ ":****** epoch" + str(i*100//mnist.train.images.shape[0]+1)+ " ******* test accuracy:" + str(a)+ " test loss:" + str(c))
@@ -117,7 +127,7 @@ def training_step(i, update_test_data, update_train_data):
         
       
     # backpropagation training step (this is the main step. Model is getting trained over here..calculate the gradient and update the fraction of it in the W and b)
-    sess.run(train_step, {X: batch_X, Y_: batch_Y, lr:learning_rate})
+    sess.run(train_step, {X: batch_X, Y_: batch_Y, pkeep:0.75, lr:learning_rate})
     
 datavis.animate(training_step, iterations=10000+1, train_data_update_freq=20, test_data_update_freq=100, more_tests_at_start= True)
 
